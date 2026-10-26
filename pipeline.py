@@ -1,6 +1,6 @@
 # ==========================================================
 # ENTERPRISE INSTITUTIONAL WHOLESALE PIPELINE
-# FULLY INTEGRATED: MULTI-REGION, MAO, SMS & CLEVA ROUTING
+# FULLY INTEGRATED: MULTI-REGION, MAO, SMS, CLEVA & CRM WEBHOOK
 # ==========================================================
 
 import os
@@ -78,6 +78,29 @@ def trigger_automated_sms(owner_phone, property_address, offer_price):
     )
     print(f"-> [AUTOMATED SMS DISPATCHED to {owner_phone}]: {sms_text}")
     return sms_text
+
+# 6. FAIL-SAFE FREE CRM / GOOGLE SHEET WEBHOOK BRIDGE
+def sync_to_free_crm(prop_address, owner_name, owner_phone, asking_price, mao, gross_spread, transaction_type):
+    try:
+        webhook_url = os.environ.get("CRM_WEBHOOK_URL")
+        if not webhook_url:
+            return
+            
+        payload = {
+            "address": prop_address,
+            "owner": owner_name,
+            "phone": owner_phone,
+            "asking_price": asking_price,
+            "mao": mao,
+            "spread": gross_spread,
+            "structure": transaction_type,
+            "status": "New Lead - SMS Dispatched"
+        }
+        
+        requests.post(webhook_url, json=payload, timeout=5)
+        print("-> [CRM SYNC]: Lead successfully logged to database.")
+    except Exception as e:
+        print(f"-> [CRM SYNC WARNING]: Webhook dispatch skipped ({e})")
 
 # Execution Main Loop
 raw_leads = fetch_multi_source_leads()
@@ -174,6 +197,9 @@ for raw_text in raw_leads:
                     "text": buyer_message,
                     "parse_mode": "Markdown"
                 })
+            
+            # TRIGGER GOOGLE SHEET / CRM SYNC (FAIL-SAFE)
+            sync_to_free_crm(prop_address, owner_name, owner_phone, asking_price, mao, gross_spread, transaction_type)
                 
             seen_properties.append(prop_address)
             new_leads_count += 1
@@ -183,4 +209,4 @@ for raw_text in raw_leads:
         print(f"-> Error on record: {e}")
 
 save_seen_assets(seen_properties)
-print(f"--- EXPANDED MULTI-REGION & CLEVA PIPELINE COMPLETE. Processed: {new_leads_count} ---")
+print(f"--- EXPANDED MULTI-REGION, CLEVA & CRM PIPELINE COMPLETE. Processed: {new_leads_count} ---")
