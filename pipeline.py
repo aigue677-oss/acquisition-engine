@@ -31,8 +31,7 @@ Output ONLY raw JSON. No markdown code blocks, no conversational text.
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-# Optional: Add a dedicated Telegram Channel ID or Group ID for your Cash Buyers if separate (e.g., "@my_cash_buyers")
-# If left matching TELEGRAM_CHAT_ID, it will post directly to your command feed.
+# Optional: Dedicated Telegram Channel ID or Group ID for your Cash Buyers
 BUYERS_CHANNEL_ID = os.environ.get("BUYERS_CHANNEL_ID", TELEGRAM_CHAT_ID)
 
 # 2. STATE MANAGEMENT: Load deduplication memory ledger
@@ -54,11 +53,12 @@ def save_seen_assets(seen_list):
 seen_properties = load_seen_assets()
 print(f"--- MEMORY LOADED: {len(seen_properties)} unique properties tracked in ledger ---")
 
-# Distressed Real Estate Feed
+# Real Estate Feed with the New Fresh Test Property Included
 real_estate_feed = [
     """DISTRESSED OFF-MARKET LEAD: 742 Evergreen Terrace, Springfield. Pre-foreclosure notice filed. Owner facing auction. Asking price: $120,000. ARV comp sales in neighborhood: $280,000. Estimated cosmetic and roof repairs: $35,000. Motivated seller wants fast cash.""",
     """RETAIL PRICED HOME: 123 Main Street. Move-in ready. Asking $250,000. ARV $260,000. No distress indicators.""",
     """TAX DELINQUENT PROBATE: 884 Oak Lane, Shelbyville. Inherited property, out-of-state heirs. Tax lien of $14,000. Asking price / debt payoff: $65,000. ARV: $190,000. Full gut rehab required: $45,000.""",
+    """SUPER DEEP DISCOUNT DISTRESS: 999 Wall Street, Capital City. Vacant property, code violations, tax lien. Asking price: $40,000. ARV: $150,000. Repairs: $20,000.""",
 ]
 
 print(f"--- CLOUD REAL ESTATE WORKER: SCANNING {len(real_estate_feed)} LEADS ---")
@@ -131,7 +131,7 @@ for index, raw_text in enumerate(real_estate_feed):
                 "parse_mode": "Markdown"
             })
             
-            # Dispatch Buyer Network Broadcast (if a separate channel ID is specified)
+            # Dispatch Buyer Network Broadcast
             if BUYERS_CHANNEL_ID != TELEGRAM_CHAT_ID:
                 requests.post(telegram_url, json={
                     "chat_id": BUYERS_CHANNEL_ID,
@@ -153,4 +153,4 @@ for index, raw_text in enumerate(real_estate_feed):
 
 save_seen_assets(seen_properties)
 print(f"--- REAL ESTATE WORKER CYCLE COMPLETE. New leads saved: {new_leads_count} ---")
-    
+
