@@ -1,5 +1,6 @@
 # ==========================================
-# ENTERPRISE REAL ESTATE WHOLESALE PIPELINE
+# ENTERPRISE WHOLESALE REAL ESTATE PIPELINE 
+# WITH AUTOMATED BUYER DISPATCH & MEMORY
 # ==========================================
 
 import os
@@ -30,6 +31,9 @@ Output ONLY raw JSON. No markdown code blocks, no conversational text.
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# Optional: Add a dedicated Telegram Channel ID or Group ID for your Cash Buyers if separate (e.g., "@my_cash_buyers")
+# If left matching TELEGRAM_CHAT_ID, it will post directly to your command feed.
+BUYERS_CHANNEL_ID = os.environ.get("BUYERS_CHANNEL_ID", TELEGRAM_CHAT_ID)
 
 # 2. STATE MANAGEMENT: Load deduplication memory ledger
 STATE_FILE = "seen_assets.json"
@@ -50,7 +54,7 @@ def save_seen_assets(seen_list):
 seen_properties = load_seen_assets()
 print(f"--- MEMORY LOADED: {len(seen_properties)} unique properties tracked in ledger ---")
 
-# Simulated Distressed Real Estate Feed (In production, connect county scrapers or off-market RSS)
+# Distressed Real Estate Feed
 real_estate_feed = [
     """DISTRESSED OFF-MARKET LEAD: 742 Evergreen Terrace, Springfield. Pre-foreclosure notice filed. Owner facing auction. Asking price: $120,000. ARV comp sales in neighborhood: $280,000. Estimated cosmetic and roof repairs: $35,000. Motivated seller wants fast cash.""",
     """RETAIL PRICED HOME: 123 Main Street. Move-in ready. Asking $250,000. ARV $260,000. No distress indicators.""",
@@ -85,34 +89,57 @@ for index, raw_text in enumerate(real_estate_feed):
         repairs = prop.get("estimated_repairs") or 0
         confidence = prop.get("confidence_score") or 0
         
-        # INSTITUTIONAL MAO (Maximum Allowable Offer) FORMULA
-        # MAO = (ARV * 0.70) - Repairs
+        # INSTITUTIONAL MAO FORMULA: MAO = (ARV * 0.70) - Repairs
         mao = (arv * 0.70) - repairs
-        potential_spread = mao - asking_price  # If asking price is below MAO, this is your wholesale assignment buffer/profit
+        potential_spread = mao - asking_price
         
-        # Financial Decision Matrix: Require high confidence, positive wholesale spread, and distress motivation
+        # Financial Decision Matrix
         if confidence >= 8 and asking_price <= mao and potential_spread >= 15000:
-            message_text = (
-                f"🏠 *WHOLESALE REAL ESTATE ALERT* 🏠\n\n"
+            
+            # 1. Private Command Alert (Sent to You)
+            admin_message = (
+                f"🏠 *ACQUISITIONS: NEW TARGET SECURED* 🏠\n\n"
                 f"📍 *Address:* {prop_address}\n"
-                f"⚠️ *Distress Type:* {prop['distress_type'].upper()}\n"
+                f"⚠️ *Distress:* {prop['distress_type'].upper()}\n"
                 f"💵 *Asking Price:* ${asking_price:,}\n"
-                f"📈 *ARV (Market Value):* ${arv:,}\n"
-                f"🛠️ *Est. Repairs:* ${repairs:,}\n"
+                f"📈 *ARV:* ${arv:,}\n"
+                f"🛠️ *Repairs:* ${repairs:,}\n"
                 f"🎯 *Calculated MAO:* ${mao:,.0f}\n"
-                f"💰 *Est. Wholesale Spread:* ${potential_spread:,.0f}\n"
-                f"🚀 *Status:* CONTRACT UNDERWRITTEN & DISPATCHED"
+                f"💰 *Wholesale Spread:* ${potential_spread:,.0f}\n"
+                f"🚀 *Status:* Ready for seller outreach."
+            )
+            
+            # 2. Public/Buyer Broadcast (Professional Deal Brief for Cash Buyers)
+            buyer_message = (
+                f"🚨 *OFF-MARKET WHOLESALE ASSIGNMENT* 🚨\n\n"
+                f"📍 *Market/Area:* {prop_address}\n"
+                f"🏷️ *Asset Class:* Single Family Residential\n"
+                f"💵 *Contract Price:* ${asking_price:,}\n"
+                f"📈 *Estimated ARV:* ${arv:,}\n"
+                f"🛠️ *Est. Repairs:* ${repairs:,}\n"
+                f"🔥 *Projected Potential Spread:* Excellent fix-and-flip or rental margins.\n"
+                f"⚡ *Terms:* 14-day close, clear title, EMD secured in escrow.\n\n"
+                f"_Reply 'INTERESTED' or contact acquisitions desk to review inspection reports and lock down contract terms._"
             )
             
             telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": TELEGRAM_CHAT_ID,
-                "text": message_text,
-                "parse_mode": "Markdown"
-            }
             
-            requests.post(telegram_url, json=payload)
-            print(f"-> [DISPATCH SENT]: Wholesale lead secured for {prop_address}")
+            # Dispatch Admin Alert
+            requests.post(telegram_url, json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": admin_message,
+                "parse_mode": "Markdown"
+            })
+            
+            # Dispatch Buyer Network Broadcast (if a separate channel ID is specified)
+            if BUYERS_CHANNEL_ID != TELEGRAM_CHAT_ID:
+                requests.post(telegram_url, json={
+                    "chat_id": BUYERS_CHANNEL_ID,
+                    "text": buyer_message,
+                    "parse_mode": "Markdown"
+                })
+                
+            print(f"-> [DUAL DISPATCH SENT]: Admin alert & buyer broadcast queued for {prop_address}")
             
             seen_properties.append(prop_address)
             new_leads_count += 1
@@ -126,4 +153,4 @@ for index, raw_text in enumerate(real_estate_feed):
 
 save_seen_assets(seen_properties)
 print(f"--- REAL ESTATE WORKER CYCLE COMPLETE. New leads saved: {new_leads_count} ---")
-
+    
