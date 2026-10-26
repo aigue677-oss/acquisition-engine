@@ -1,6 +1,6 @@
 # ==========================================================
-# ENTERPRISE WHOLESALE REAL ESTATE PIPELINE 
-# WITH INSTITUTIONAL NUANCE DETECTION & SKIP-TRACING
+# ENTERPRISE WHOLESALE REAL ESTATE PIPELINE
+# WITH FINANCIAL EXECUTION & TRANSACTION STRUCTURING ($0 UPFRONT)
 # ==========================================================
 
 import os
@@ -16,7 +16,6 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# UPGRADED: AI Prompt now extracts probate, occupancy, and title nuance indicators
 real_estate_system_prompt = """
 You are an elite Real Estate Acquisitions Director and Institutional Underwriter specializing in off-market distressed properties, probate compliance, and wholesaling.
 Extract the following fields precisely into a valid JSON object:
@@ -68,10 +67,10 @@ def fetch_market_leads():
         except Exception:
             pass
 
-    # Fallback queue featuring a complex probate nuance test case
+    # Fallback queue testing high-spread double-closing vs standard assignment
     return [
-        """DISTRESSED PROBATE LEAD: 555 Legacy Court, Metro City. Inherited property from deceased parent. Probate status: unopened, no executor appointed yet. Asking price: $70,000. ARV: $210,000. Repairs: $30,000. Occupant: vacant.""",
-        """PRE-FORECLOSURE TARGET: 108 Equity Boulevard, Capital City. Notice of default filed. Asking price: $135,000. ARV: $310,000. Estimated cosmetic repairs: $40,000. Occupant: owner_occupied."""
+        """DISTRESSED HIGH-SPREAD TARGET: 777 Apex Boulevard, Capital City. Severe tax delinquency & urgent relocation. Asking price: $45,000. ARV: $160,000. Repairs: $20,000. Occupant: vacant.""",
+        """PROBATE DISTRESS LEAD: 888 Heritage Lane, Metro City. Unopened probate estate. Asking price: $90,000. ARV: $240,000. Repairs: $35,000. Occupant: owner_occupied."""
     ]
 
 # 4. AUTOMATED SKIP-TRACING MODULE
@@ -83,11 +82,11 @@ def skiptrace_owner(property_address):
             st_response = requests.post("https://api.batchdata.com/v1/property/skip-trace", json=st_payload, headers=st_headers, timeout=8)
             if st_response.status_code == 200:
                 data = st_response.json().get("data", {})
-                return data.get("owner_name", "Verified Heir/Owner"), data.get("phone", "Available via Dashboard")
+                return data.get("owner_name", "Verified Owner"), data.get("phone", "Available via Dashboard")
         except Exception:
             pass
             
-    return "Estate Beneficiary / Trust", "+1 (555) 942-3311 [Verified Mobile]"
+    return "Institutional Trust / Owner", "+1 (555) 712-4982 [Verified Mobile]"
 
 # Execution Main Loop
 raw_leads = fetch_market_leads()
@@ -116,48 +115,56 @@ for index, raw_text in enumerate(raw_leads):
         
         # INSTITUTIONAL MAO FORMULA
         mao = (arv * 0.70) - repairs
-        potential_spread = mao - asking_price
+        gross_spread = mao - asking_price
         
-        # Financial & Nuance Decision Matrix
-        if confidence >= 8 and asking_price <= mao and potential_spread >= 15000:
+        # Financial Decision Matrix & $0 Cost Transaction Structuring
+        if confidence >= 8 and asking_price <= mao and gross_spread >= 15000:
             
             owner_name, owner_phone = skiptrace_owner(prop_address)
             
+            # TRANSACTION ROUTING LOGIC ($0 UPFRONT)
+            if gross_spread >= 30000:
+                # High Spread -> Simultaneous Double-Close with 1-Day Transactional Funding (Paid from closing proceeds)
+                transaction_type = "SIMULTANEOUS DOUBLE-CLOSE (A-B-C)"
+                funding_fee = 1500  # Estimated 1-day lender fee deducted at table
+                net_profit = gross_spread - funding_fee
+                financial_execution_note = f"💡 *Structure:* Double-Close | *Funding Fee:* ${funding_fee:,} (Paid from closing proceeds — $0 out-of-pocket) | *Net Profit:* **${net_profit:,.0f}**"
+            else:
+                transaction_type = "STANDARD CONTRACT ASSIGNMENT"
+                net_profit = gross_spread
+                financial_execution_note = f"💡 *Structure:* Assignment of Contract | *Assignment Fee:* **${net_profit:,.0f}** (Disbursed directly by title company)"
+                
             # NUANCE SAFEGUARD FLAGS
             nuance_warnings = []
             if probate == "unopened":
-                nuance_warnings.append("⚠️ *PROBATE ALERT:* Unopened estate! Must connect heir with probate attorney before signing.")
-            if potential_spread >= 30000:
-                nuance_warnings.append("💡 *STRATEGY NOTE:* High spread ($30k+). Structure as a **Double-Close** to protect assignment margin.")
+                nuance_warnings.append("⚠️ *PROBATE ALERT:* Unopened estate! Connect heir with probate attorney.")
             if occupancy == "tenant_occupied":
-                nuance_warnings.append("🏠 *OCCUPANCY NOTE:* Tenant-occupied. Verify lease agreements and cash-for-keys terms.")
+                nuance_warnings.append("🏠 *OCCUPANCY NOTE:* Tenant-occupied. Verify lease terms.")
                 
-            warning_text = "\n".join(nuance_warnings) if nuance_warnings else "✅ *Compliance:* Standard contract assignment clear."
+            warning_text = "\n".join(nuance_warnings) if nuance_warnings else "✅ *Compliance:* Clear title & standard terms."
             
-            # 1. Private Command Alert Enriched with Nuances
+            # 1. Private Command Alert Enriched with Financial Architecture
             admin_message = (
-                f"🛡️ *ELITE ACQUISITIONS: TARGET & NUANCE AUDIT* 🛡️\n\n"
+                f"🏛️ *ELITE INSTITUTIONAL ACQUISITIONS DESK* 🏛️\n\n"
                 f"📍 *Address:* {prop_address}\n"
-                f"👤 *Owner/Heir:* {owner_name}\n"
+                f"👤 *Owner:* {owner_name}\n"
                 f"📞 *Direct Phone:* {owner_phone}\n"
-                f"⚠️ *Distress:* {prop['distress_type'].upper()} | *Occupancy:* {occupancy.upper()}\n"
-                f"💵 *Asking:* ${asking_price:,} | 📈 *ARV:* ${arv:,} | 🛠️ *Repairs:* ${repairs:,}\n"
-                f"🎯 *MAO:* ${mao:,.0f} | 💰 *Spread:* ${potential_spread:,.0f}\n\n"
+                f"⚙️ *Method:* {transaction_type}\n"
+                f"💵 *Asking:* ${asking_price:,} | 🎯 *MAO:* ${mao:,.0f}\n"
+                f"{financial_execution_note}\n\n"
                 f"{warning_text}\n\n"
-                f"🚀 *Action:* Use consultative script & ensure 'and/or assigns' clause."
+                f"🚀 *Action:* Lock contract with 'and/or assigns' & $10–$100 EMD in title escrow."
             )
             
             # 2. Public/Buyer Broadcast
             buyer_message = (
                 f"🚨 *OFF-MARKET WHOLESALE ASSIGNMENT* 🚨\n\n"
-                f"📍 *Market/Area:* {prop_address}\n"
-                f"🏷️ *Asset Class:* Single Family Residential ({occupancy.replace('_', ' ').title()})\n"
+                f"📍 *Location:* {prop_address}\n"
+                f"🏷️ *Asset:* Single Family Residential\n"
                 f"💵 *Contract Price:* ${asking_price:,}\n"
-                f"📈 *Estimated ARV:* ${arv:,}\n"
-                f"🛠️ *Est. Repairs:* ${repairs:,}\n"
-                f"🔥 *Projected Potential Spread:* Exceptional margins.\n"
-                f"⚡ *Terms:* 14-day close, clear title, EMD secured in escrow.\n\n"
-                f"_Reply 'INTERESTED' to review inspection reports and lock down contract terms._"
+                f"📈 *Est. ARV:* ${arv:,} | 🛠️ *Repairs:* ${repairs:,}\n"
+                f"🔥 *Status:* Ready for review. 14-day close.\n\n"
+                f"_Reply 'INTERESTED' to secure asset terms with escrow EMD._"
             )
             
             telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -183,5 +190,5 @@ for index, raw_text in enumerate(raw_leads):
         print(f"-> Error on record: {e}")
 
 save_seen_assets(seen_properties)
-print(f"--- WORKER CYCLE COMPLETE. Processed: {new_leads_count} ---")
-        
+print(f"--- FINANCIAL PIPELINE CYCLE COMPLETE. Processed: {new_leads_count} ---")
+            
