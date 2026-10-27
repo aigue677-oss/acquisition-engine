@@ -29,7 +29,6 @@ def fetch_live_leads():
         response = requests.get(LEAD_API_URL, headers=headers, timeout=30)
         response.raise_for_status()
         data = response.json()
-        # Assumes the API returns a list under a 'leads' or 'data' key
         return data.get("leads", data.get("data", []))
     except Exception as e:
         print(f"CRITICAL API FETCH ERROR: {e}")
@@ -41,7 +40,6 @@ def get_existing_addresses(sheet):
     to enforce absolute deduplication.
     """
     try:
-        # Assumes Address is in column 2 (Index 2)
         column_values = sheet.col_values(2)
         return set(column_values)
     except Exception as e:
@@ -82,7 +80,6 @@ def log_to_google_sheets(sheet, lead_data):
     print(f"Successfully logged live lead: {lead_data.get('address')}")
 
 if __name__ == "__main__":
-    # Initialize Google Sheets connection
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
@@ -92,10 +89,7 @@ if __name__ == "__main__":
     client = gspread.authorize(creds)
     sheet = client.open("Wholesale Acquisitions Master Pipeline").sheet1
     
-    # Pull current state for deduplication
     existing_addresses = get_existing_addresses(sheet)
-    
-    # Fetch live incoming properties
     live_leads = fetch_live_leads()
     
     if not live_leads:
@@ -108,11 +102,10 @@ if __name__ == "__main__":
                 print(f"Skipping duplicate record: {address}")
                 continue
                 
-            # Execute institutional notification and logging sequence
             send_telegram_alert(lead)
             log_to_google_sheets(sheet, lead)
-            existing_addresses.add(address) # Prevent intra-run duplicates
+            existing_addresses.add(address)
             new_count += 1
             
         print(f"Pipeline execution complete. Processed {new_count} new verified leads.")
-            
+        
