@@ -19,7 +19,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install requests gspread google-auth cryptography
+          pip install requests gspread google-auth cryptography reportlab
 
       - name: Execute Pipeline Script
         env:
