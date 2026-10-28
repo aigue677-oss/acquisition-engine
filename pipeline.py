@@ -22,11 +22,9 @@ def send_telegram_alert(message: str):
 
 def fetch_live_leads_from_sheets():
     """
-    Connects securely to Google Sheets using JSON credentials stored in GitHub Secrets 
-    and fetches rows marked with 'New' status.
+    Connects securely to Google Sheets and fetches rows ready for outreach.
     """
     try:
-        # Load service account credentials from a GitHub Secret environment variable
         creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
         if not creds_json:
             print("Google Service Account credentials missing from environment.")
@@ -40,20 +38,21 @@ def fetch_live_leads_from_sheets():
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
 
-        # Open your tracking sheet by name
         sheet = client.open("Sovereign_Grid_Leads").sheet1
         records = sheet.get_all_records()
 
         dynamic_leads = []
         for idx, row in enumerate(records, start=2): # start=2 accounts for header row
-            if str(row.get("Status", "")).strip().lower() == "new":
+            # We look for rows where Status is set to 'Clear Title' (or change to your preferred trigger status)
+            status_val = str(row.get("Status", "")).strip().lower()
+            if status_val == "clear title":
                 lead_data = {
                     "row_index": idx,
-                    "seller_name": row.get("OwnerName", "Property Owner"),
-                    "email": row.get("OwnerEmail", ""),
-                    "address": row.get("PropertyAddress", ""),
-                    "arv": float(row.get("ARV", 0.0)),
-                    "repair_costs": float(row.get("Repairs", 0.0)),
+                    "seller_name": row.get("Owner Name", "Property Owner"),
+                    "email": row.get("Owner Email", "seller@example.com"), # Fallback if email column isn't filled yet
+                    "address": row.get("Property Address", ""),
+                    "arv": float(row.get("ARV", 250000.0)), # Defaults if column is blank
+                    "repair_costs": float(row.get("Repairs", 15000.0)),
                     "date": str(row.get("Date", ""))
                 }
                 dynamic_leads.append(lead_data)
@@ -64,7 +63,7 @@ def fetch_live_leads_from_sheets():
         return []
 
 def update_lead_status_in_sheet(row_index: int, new_status: str):
-    """Updates the status column in your Google Sheet once a deal is processed."""
+    """Updates the Status column in your Google Sheet once a deal is processed."""
     try:
         creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
         creds_dict = json.loads(creds_json)
@@ -73,8 +72,6 @@ def update_lead_status_in_sheet(row_index: int, new_status: str):
         client = gspread.authorize(creds)
         
         sheet = client.open("Sovereign_Grid_Leads").sheet1
-        # Assuming 'Status' is in a specific column (e.g., column 7 or adjust based on your sheet layout)
-        # Find column index for 'Status'
         header = sheet.row_values(1)
         status_col_idx = header.index("Status") + 1
         sheet.update_cell(row_index, status_col_idx, new_status)
@@ -82,23 +79,21 @@ def update_lead_status_in_sheet(row_index: int, new_status: str):
         print(f"Failed to update sheet status: {e}")
 
 def run_pipeline():
-    print("Initializing Sovereign Grid Acquisition Pipeline (Dynamic Ingress Mode)...")
+    print("Initializing Sovereign Grid Acquisition Pipeline (Custom Schema Mode)...")
 
     sovereign_engine = SovereignEngine(max_offer_discount=0.70)
     pdf_compiler = PDFCompiler()
     email_dispatcher = EmailDispatcher()
     memory_wiper = MemoryWiper()
 
-    # 1. Fetch live un-processed leads from Google Sheets
     leads = fetch_live_leads_from_sheets()
     if not leads:
-        print("No new leads found in the ingress queue.")
+        print("No eligible leads found with 'Clear Title' status.")
         return
 
     for lead in leads:
         print(f"Processing live target lead: {lead['address']}")
 
-        # 2. Compute MAO & Draft Offer
         mao_offer = sovereign_engine.calculate_mao(lead['arv'], lead['repair_costs'])
         offer_package = sovereign_engine.draft_acquisition_email(
             seller_name=lead['seller_name'],
@@ -115,17 +110,14 @@ def run_pipeline():
             "date": lead['date']
         }
 
-        # 3. Compile Contract PDF in-memory
         pdf_filename = pdf_compiler.generate_contract(lead_contract_data)
 
-        # 4. Dispatch Outbound Email to Seller
         email_dispatched = email_dispatcher.send_offer(
             recipient_email=lead['email'],
             subject=offer_package['subject'],
             body_text=offer_package['body']
         )
 
-        # 5. Notify Operator via Telegram
         alert_message = (
             f"🚨 *SOVEREIGN GRID: LIVE DEAL PROCESSED*\n\n"
             f"📍 *Property:* {lead['address']}\n"
@@ -136,14 +128,12 @@ def run_pipeline():
         )
         send_telegram_alert(alert_message)
 
-        # 6. Update Google Sheet status so it doesn't process the same lead twice
+        # Update status to prevent duplication
         update_lead_status_in_sheet(lead['row_index'], "Offer Sent")
-
-        # 7. Secure Ephemeral Memory Purge per lead
         memory_wiper.purge_transient_files()
 
     print("Pipeline execution cycle complete. All local traces securely shredded.")
 
 if __name__ == "__main__":
     run_pipeline()
-        
+    
