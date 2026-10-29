@@ -1,4 +1,6 @@
+Flask
 gspread
 google-auth
-reportlab
 requests
+reportlab
+gunicorn
