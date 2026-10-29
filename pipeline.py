@@ -28,14 +28,10 @@ def get_gspread_client():
         return None
 
 def generate_pdf_contract(address, owner_name, mao):
-    """
-    Generates a formal, institutional PDF acquisition contract.
-    """
     filename = "Sovereign_Agreement.pdf"
     c = canvas.Canvas(filename, pagesize=letter)
     width, height = letter
 
-    # Document Header
     c.setFont("Helvetica-Bold", 16)
     c.drawString(50, height - 50, "SOVEREIGN GRID INSTITUTIONAL ACQUISITIONS")
     c.setFont("Helvetica", 10)
@@ -44,7 +40,6 @@ def generate_pdf_contract(address, owner_name, mao):
     c.setLineWidth(1)
     c.line(50, height - 75, width - 50, height - 75)
 
-    # Body Content
     c.setFont("Helvetica-Bold", 12)
     c.drawString(50, height - 110, "MEMORANDUM OF INTENT / CASH PURCHASE AGREEMENT")
 
@@ -69,51 +64,28 @@ def generate_pdf_contract(address, owner_name, mao):
         c.drawString(50, text_y, line)
         text_y -= 20
 
-    # Footer
     c.setFont("Helvetica-Oblique", 9)
     c.drawString(50, 50, "Generated autonomously by Sovereign Grid Compliance Engine. Confidential & Legally Binding Framework.")
     
     c.save()
     return filename
 
-def send_enhanced_telegram_alert(address, owner_name, owner_phone, owner_email, arv, repairs, asking_price, mao, gross_spread):
-    """
-    Dispatches a richly formatted, enhanced multi-channel audit report directly to Telegram.
-    """
+def send_telegram_alert(telegram_msg):
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not bot_token or not chat_id:
         print("Telegram credentials missing. Skipping alert.")
         return
     
-    telegram_msg = (
-        f"🌐 *SOVEREIGN GRID: MULTI-MARKET EXECUTION ALERT* 🌐\n\n"
-        f"📍 *Property Target:* `{address}`\n"
-        f"👤 *Owner Name:* {owner_name}\n"
-        f"📞 *Phone:* `{owner_phone}`\n"
-        f"✉️ *Email:* {owner_email}\n\n"
-        f"📊 *Underwriting Financials:*\n"
-        f"• *ARV:* `${arv:,.2f}`\n"
-        f"• *Est. Repairs:* `${repairs:,.2f}`\n"
-        f"• *Asking Price:* `${asking_price:,.2f}`\n"
-        f"• *Calculated MAO:* `${mao:,.2f}`\n"
-        f"• *Gross Spread:* `${gross_spread:,.2f}`\n\n"
-        f"🚀 *Execution Status:* Offer Contract Compiled, Dispatched via Email, & Logged to Sheet as 'Offer Sent'."
-    )
-    
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": telegram_msg, "parse_mode": "Markdown"}
     try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print("Enhanced Telegram mobile notification successfully dispatched.")
-        else:
-            print(f"Telegram API error: {response.text}")
+        requests.post(url, json=payload)
     except Exception as e:
         print(f"Failed to send Telegram alert: {e}")
 
 def run_pipeline():
-    print("Initializing Sovereign Grid Acquisition Pipeline (Governance & Compliance Mode)...")
+    print("Initializing Sovereign Grid Acquisition Pipeline (Lifecycle & Follow-Up Mode)...")
     client = get_gspread_client()
     if not client:
         return
@@ -129,6 +101,7 @@ def run_pipeline():
     for idx, row in enumerate(records, start=2):
         status = row.get("Status", "")
         
+        # 1. Process New Clear Title Leads
         if status == "Clear Title":
             address = row.get("Property Address")
             owner_name = row.get("Owner Name")
@@ -139,17 +112,13 @@ def run_pipeline():
             asking_price = float(row.get("Asking Price", 0) or 0)
 
             print(f"Evaluating governance & compliance for lead: {address}")
-
             mao = (arv * 0.70) - repairs
             gross_spread = arv - repairs - asking_price
 
             if gross_spread > 0 and asking_price <= mao:
-                print(f"Underwriting & Compliance Passed. Official MAO calculated: ${mao:,.2f}")
-
+                print(f"Underwriting Passed. Official MAO calculated: ${mao:,.2f}")
                 pdf_filename = generate_pdf_contract(address, owner_name, mao)
-                print(f"Compliant contract compiled successfully: {pdf_filename}")
 
-                # Dispatch Email with PDF Attachment
                 try:
                     msg = EmailMessage()
                     msg['Subject'] = f"Formal Acquisition Offer - {address}"
@@ -162,9 +131,7 @@ def run_pipeline():
                     )
 
                     with open(pdf_filename, 'rb') as f:
-                        file_data = f.read()
-                        file_name = f.name
-                    msg.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+                        msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f.name)
 
                     with smtplib.SMTP(smtp_server, smtp_port) as server:
                         server.starttls()
@@ -174,22 +141,40 @@ def run_pipeline():
                 except Exception as e:
                     print(f"Email dispatch failed: {e}")
 
-                # Dispatch Enhanced Telegram Mobile Notification
-                send_enhanced_telegram_alert(address, owner_name, owner_phone, owner_email, arv, repairs, asking_price, mao, gross_spread)
+                telegram_msg = (
+                    f"🌐 *SOVEREIGN GRID: OFFER DISPATCHED* 🌐\n\n"
+                    f"📍 *Property:* `{address}`\n"
+                    f"👤 *Owner:* {owner_name} ({owner_phone})\n"
+                    f"💰 *Calculated MAO:* `${mao:,.2f}`\n"
+                    f"📊 *Gross Spread:* `${gross_spread:,.2f}`\n"
+                    f"🚀 *Status:* Offer Sent & Logged."
+                )
+                send_telegram_alert(telegram_msg)
 
-                # Update Google Sheet Status
                 sheet.update_cell(idx, 11, "Offer Sent")
-                print(f"Google Sheet row {idx} status updated to 'Offer Sent' under governance review.")
+                print(f"Google Sheet row {idx} status updated to 'Offer Sent'.")
 
-                # Security Hygiene: Shred Local Asset
                 if os.path.exists(pdf_filename):
                     os.remove(pdf_filename)
-                    print(f"Securely shredded and purged local asset: {pdf_filename}")
-            else:
-                print(f"Lead failed institutional governance thresholds. Gross Spread: ${gross_spread:,.2f}")
 
-    print("Pipeline execution cycle complete. Audit logs secured.")
+        # 2. Process Lifecycle Follow-Up State Management
+        elif status == "Offer Sent":
+            address = row.get("Property Address")
+            owner_name = row.get("Owner Name")
+            print(f"Checking lifecycle for pending offer: {address}")
+            
+            sheet.update_cell(idx, 11, "Follow-Up Required")
+            
+            followup_msg = (
+                f"🔄 *SOVEREIGN GRID: FOLLOW-UP REQUIRED* 🔄\n\n"
+                f"📍 *Property:* `{address}`\n"
+                f"👤 *Owner:* {owner_name}\n"
+                f"⏱️ *Action:* Initial offer pending response. Secondary re-engagement required."
+            )
+            send_telegram_alert(followup_msg)
+            print(f"Row {idx} transitioned to 'Follow-Up Required' and alert dispatched.")
+
+    print("Pipeline lifecycle execution cycle complete.")
 
 if __name__ == "__main__":
     run_pipeline()
-        
