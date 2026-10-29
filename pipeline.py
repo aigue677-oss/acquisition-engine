@@ -57,16 +57,21 @@ def generate_pdf_contract(address, owner_name, mao):
             "",
             f"OFFER PURCHASE PRICE: ${mao:,.2f}",
             "",
-            "Terms: All-Cash, As-Is, Zero Agent Commissions, Standard Escrow Closing.",
+            "Why Sovereign Grid?",
+            "- 100% All-Cash Offer (Zero bank financing contingencies)",
+            "- Zero Agent Commissions or Hidden Fees (You keep 100% of proceeds)",
+            "- As-Is Purchase (No repairs or cleaning required)",
+            "- Flexible Closing Timeline (7 to 21 days)",
+            "",
             "Please reply directly to this dispatch to accept terms and execute closing paperwork."
         ]
 
         for line in lines:
             c.drawString(50, text_y, line)
-            text_y -= 20
+            text_y -= 18
 
         c.setFont("Helvetica-Oblique", 9)
-        c.drawString(50, 50, "Generated autonomously by Sovereign Grid Compliance Engine. Confidential & Legally Binding Framework.")
+        c.drawString(50, 40, "Generated autonomously by Sovereign Grid Compliance Engine. Confidential & Legally Binding.")
         
         c.save()
         return filename
@@ -91,7 +96,7 @@ def send_telegram_alert(telegram_msg):
         print(f"Failed to dispatch Telegram alert securely: {e}")
 
 def run_pipeline():
-    print("Initializing Sovereign Grid Acquisition Pipeline (Production Scaling & Priority Mode)...")
+    print("Initializing Sovereign Grid Acquisition Pipeline (LIVE Production Mode)...")
     client = get_gspread_client()
     if not client:
         return
@@ -140,7 +145,7 @@ def run_pipeline():
                 repairs = float(row.get("Repairs", 0) or 0)
                 asking_price = float(row.get("Asking Price", 0) or 0)
 
-                print(f"Evaluating priority governance for lead: {address}")
+                print(f"Evaluating live priority governance for lead: {address}")
                 mao = (arv * 0.70) - repairs
                 gross_spread = arv - repairs - asking_price
 
@@ -151,13 +156,15 @@ def run_pipeline():
                     if pdf_filename:
                         try:
                             msg = EmailMessage()
-                            msg['Subject'] = f"Formal Acquisition Offer - {address}"
+                            msg['Subject'] = f"Official All-Cash Acquisition Offer - {address}"
                             msg['From'] = sender_email
                             msg['To'] = owner_email
                             msg.set_content(
-                                f"Dear {owner_name},\n\nPlease find attached the formal all-cash purchase offer "
-                                f"from Sovereign Grid for your property at {address}.\n\nOffer Amount: ${mao:,.2f}\n\n"
-                                "Review the attached agreement and reply to accept.\n\nBest regards,\nSovereign Grid Acquisitions"
+                                f"Dear {owner_name},\n\nSovereign Grid Institutional Acquisitions has completed its "
+                                f"underwriting for your property located at {address}.\n\n"
+                                f"Our formal all-cash purchase offer is: ${mao:,.2f}\n\n"
+                                "Please review the attached formal non-predatory purchase agreement and reply to accept.\n\n"
+                                "Best regards,\nSovereign Grid Acquisitions Team"
                             )
 
                             with open(pdf_filename, 'rb') as f:
@@ -167,17 +174,17 @@ def run_pipeline():
                                 server.starttls()
                                 server.login(sender_email, sender_password)
                                 server.send_message(msg)
-                            print(f"Acquisition offer dispatched securely to {owner_email}")
+                            print(f"Live acquisition offer dispatched securely to {owner_email}")
                         except Exception as email_err:
                             print(f"Email dispatch error for {address}: {email_err}")
 
                     telegram_msg = (
-                        f"🌐 *SOVEREIGN GRID: PRIORITY OFFER DISPATCHED* 🌐\n\n"
+                        f"🌐 *SOVEREIGN GRID: LIVE OFFER DISPATCHED* 🌐\n\n"
                         f"📍 *Property:* `{address}`\n"
                         f"👤 *Owner:* {owner_name} ({owner_phone})\n"
                         f"💰 *Calculated MAO:* `${mao:,.2f}`\n"
                         f"📊 *Gross Spread:* `${gross_spread:,.2f}`\n"
-                        f"🚀 *Status:* Prioritized & Logged."
+                        f"🚀 *Status:* Live Institutional Offer Sent."
                     )
                     send_telegram_alert(telegram_msg)
 
@@ -193,15 +200,15 @@ def run_pipeline():
             elif status == "Offer Sent":
                 address = row.get("Property Address")
                 owner_name = row.get("Owner Name")
-                print(f"Checking lifecycle for pending offer: {address}")
+                print(f"Checking live lifecycle for pending offer: {address}")
                 
                 sheet.update_cell(idx, 11, "Follow-Up Required")
                 
                 followup_msg = (
-                    f"🔄 *SOVEREIGN GRID: FOLLOW-UP REQUIRED* 🔄\n\n"
+                    f"🔄 *SOVEREIGN GRID: LIVE FOLLOW-UP REQUIRED* 🔄\n\n"
                     f"📍 *Property:* `{address}`\n"
                     f"👤 *Owner:* {owner_name}\n"
-                    f"⏱️ *Action:* Initial offer pending response. Secondary re-engagement required."
+                    f"⏱️ *Action:* Initial live offer pending response. Secondary re-engagement required."
                 )
                 send_telegram_alert(followup_msg)
                 print(f"Row {idx} transitioned to 'Follow-Up Required'.")
@@ -210,7 +217,7 @@ def run_pipeline():
             print(f"Error processing row {idx} ({row.get('Property Address', 'Unknown')}): {row_error}")
             continue
 
-    print("Production pipeline execution cycle complete. Audit logs secured.")
+    print("LIVE Production pipeline execution cycle complete. All systems secure.")
 
 if __name__ == "__main__":
     run_pipeline()
