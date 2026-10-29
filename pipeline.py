@@ -125,9 +125,9 @@ def run_pipeline():
 
             print(f"Processing live target lead: {address}")
 
-            # Calculate MAO (Standard formula: ARV * 0.70 - Repairs, or fallback logic)
+            # Calculate MAO
             mao = (arv * 0.70) - repairs
-            gross_spread = arv - repairs - asking_pice if 'arv' in locals() else 0 # safety check
+            gross_spread = arv - repairs - asking_price
             
             # Compile Contract PDF
             pdf_filename = "Sovereign_Agreement.pdf"
@@ -141,9 +141,8 @@ def run_pipeline():
             print(f"Contract compiled successfully: {pdf_filename}")
 
             # Send Email
-            email_sent = False
             if owner_email:
-                email_sent = send_offer_email(owner_email, pdf_filename, address, mao)
+                send_offer_email(owner_email, pdf_filename, address, mao)
             else:
                 print("No owner email found for this lead.")
 
@@ -159,7 +158,6 @@ def run_pipeline():
 
             # Update Google Sheet Status to 'Offer Sent'
             try:
-                # Find column index for 'Status' dynamically or use column 11 ('K')
                 status_col_index = list(row.keys()).index("Status") + 1
                 sheet.update_cell(idx, status_col_index, "Offer Sent")
                 print(f"Google Sheet row {idx} status updated to 'Offer Sent'.")
@@ -180,4 +178,4 @@ def run_pipeline():
 
 if __name__ == "__main__":
     run_pipeline()
-        
+    
