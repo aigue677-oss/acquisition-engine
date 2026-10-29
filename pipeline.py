@@ -129,11 +129,10 @@ def run_pipeline():
             mao = (arv * 0.70) - repairs
             gross_spread = arv - repairs - asking_price
             
-            # Compile Contract PDF
+            # Compile Contract PDF (using default compiler method signature)
             pdf_filename = "Sovereign_Agreement.pdf"
             compiler = PDFCompiler()
             compiler.generate_contract(
-                filename=pdf_filename,
                 owner_name=owner_name,
                 property_address=address,
                 mao=mao
@@ -178,4 +177,4 @@ def run_pipeline():
 
 if __name__ == "__main__":
     run_pipeline()
-    
+        
