@@ -7,7 +7,6 @@ from email.message import EmailMessage
 import requests
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from twilio.rest import Client
 
 # --- Configuration & Credentials Setup ---
 SCOPES = [
@@ -77,9 +76,9 @@ def generate_pdf_contract(address, owner_name, mao):
     c.save()
     return filename
 
-def send_telegram_alert(message):
+def send_enhanced_telegram_alert(address, owner_name, owner_phone, owner_email, arv, repairs, asking_price, mao, gross_spread):
     """
-    Dispatches real-time audit logs and status alerts to Telegram.
+    Dispatches a richly formatted, enhanced multi-channel audit report directly to Telegram.
     """
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
@@ -87,42 +86,31 @@ def send_telegram_alert(message):
         print("Telegram credentials missing. Skipping alert.")
         return
     
+    telegram_msg = (
+        f"🌐 *SOVEREIGN GRID: MULTI-MARKET EXECUTION ALERT* 🌐\n\n"
+        f"📍 *Property Target:* `{address}`\n"
+        f"👤 *Owner Name:* {owner_name}\n"
+        f"📞 *Phone:* `{owner_phone}`\n"
+        f"✉️ *Email:* {owner_email}\n\n"
+        f"📊 *Underwriting Financials:*\n"
+        f"• *ARV:* `${arv:,.2f}`\n"
+        f"• *Est. Repairs:* `${repairs:,.2f}`\n"
+        f"• *Asking Price:* `${asking_price:,.2f}`\n"
+        f"• *Calculated MAO:* `${mao:,.2f}`\n"
+        f"• *Gross Spread:* `${gross_spread:,.2f}`\n\n"
+        f"🚀 *Execution Status:* Offer Contract Compiled, Dispatched via Email, & Logged to Sheet as 'Offer Sent'."
+    )
+    
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+    payload = {"chat_id": chat_id, "text": telegram_msg, "parse_mode": "Markdown"}
     try:
-        requests.post(url, json=payload)
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            print("Enhanced Telegram mobile notification successfully dispatched.")
+        else:
+            print(f"Telegram API error: {response.text}")
     except Exception as e:
         print(f"Failed to send Telegram alert: {e}")
-
-def send_sms_notification(owner_phone, address, mao):
-    """
-    Dispatches real-time SMS offer notification via Twilio API.
-    """
-    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-    twilio_number = os.environ.get("TWILIO_PHONE_NUMBER")
-
-    if not account_sid or not auth_token or not twilio_number or not owner_phone:
-        print("Twilio credentials or owner phone missing. Skipping SMS dispatch.")
-        return False
-
-    try:
-        client = Client(account_sid, auth_token)
-        sms_body = (
-            f"Sovereign Grid Offer Alert: We have issued a formal all-cash "
-            f"purchase offer of ${mao:,.2f} for your property at {address}. "
-            f"Please check your email for complete contract details."
-        )
-        message = client.messages.create(
-            body=sms_body,
-            from_=twilio_number,
-            to=owner_phone
-        )
-        print(f"Twilio SMS successfully dispatched. SID: {message.sid}")
-        return True
-    except Exception as e:
-        print(f"Failed to dispatch Twilio SMS: {e}")
-        return False
 
 def run_pipeline():
     print("Initializing Sovereign Grid Acquisition Pipeline (Governance & Compliance Mode)...")
@@ -161,6 +149,7 @@ def run_pipeline():
                 pdf_filename = generate_pdf_contract(address, owner_name, mao)
                 print(f"Compliant contract compiled successfully: {pdf_filename}")
 
+                # Dispatch Email with PDF Attachment
                 try:
                     msg = EmailMessage()
                     msg['Subject'] = f"Formal Acquisition Offer - {address}"
@@ -185,21 +174,14 @@ def run_pipeline():
                 except Exception as e:
                     print(f"Email dispatch failed: {e}")
 
-                send_sms_notification(owner_phone, address, mao)
+                # Dispatch Enhanced Telegram Mobile Notification
+                send_enhanced_telegram_alert(address, owner_name, owner_phone, owner_email, arv, repairs, asking_price, mao, gross_spread)
 
-                telegram_msg = (
-                    f"🚨 *Sovereign Grid: Offer Dispatched*\n\n"
-                    f"📍 *Property:* {address}\n"
-                    f"👤 *Owner:* {owner_name} ({owner_phone})\n"
-                    f"💰 *Calculated MAO:* ${mao:,.2f}\n"
-                    f"📊 *Gross Spread:* ${gross_spread:,.2f}\n"
-                    f"✉️ *Status:* Email & SMS Sent Successfully"
-                )
-                send_telegram_alert(telegram_msg)
-
+                # Update Google Sheet Status
                 sheet.update_cell(idx, 11, "Offer Sent")
                 print(f"Google Sheet row {idx} status updated to 'Offer Sent' under governance review.")
 
+                # Security Hygiene: Shred Local Asset
                 if os.path.exists(pdf_filename):
                     os.remove(pdf_filename)
                     print(f"Securely shredded and purged local asset: {pdf_filename}")
@@ -210,4 +192,4 @@ def run_pipeline():
 
 if __name__ == "__main__":
     run_pipeline()
-    
+        
