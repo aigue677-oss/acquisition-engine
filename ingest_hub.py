@@ -10,6 +10,9 @@ SCOPES = [
 ]
 
 def get_gspread_client():
+    """
+    Initializes and authorizes the Google Sheets client using environment credentials.
+    """
     service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     if not service_account_json:
         print("Google Service Account credentials missing from environment.")
@@ -36,10 +39,10 @@ def ingest_lead(property_data):
     try:
         sheet = client.open("Sovereign_Grid_Leads").sheet1
         
-        # Calculate MAO and Gross spread automatically on ingestion if desired
-        arv = property_data.get("arv", 0)
-        repairs = property_data.get("repairs", 0)
-        asking_price = property_data.get("asking_price", 0)
+        # Financial and Underwriting calculations on ingestion
+        arv = float(property_data.get("arv", 0) or 0)
+        repairs = float(property_data.get("repairs", 0) or 0)
+        asking_price = float(property_data.get("asking_price", 0) or 0)
         
         mao = (arv * 0.70) - repairs
         gross_spread = arv - repairs - asking_price
@@ -81,3 +84,4 @@ if __name__ == "__main__":
     
     print("Testing Global Ingestion Hub with Full Schema...")
     ingest_lead(sample_global_lead)
+    
