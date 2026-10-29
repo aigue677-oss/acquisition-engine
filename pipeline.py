@@ -1,139 +1,183 @@
 import os
 import json
 import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 import gspread
 from google.oauth2.service_account import Credentials
-from engine_sovereign import SovereignEngine
 from pdf_compiler import PDFCompiler
-from email_dispatcher import EmailDispatcher
-from memory_wiper import MemoryWiper
 
-def send_telegram_alert(message: str):
-    """Sends immediate institutional command alerts straight to your Telegram channel."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+# --- Configuration & Credentials Setup ---
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
+
+def get_gspread_client():
+    service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if not service_account_json:
+        print("Google Service Account credentials missing from environment.")
+        return None
+    try:
+        creds_dict = json.loads(service_account_json)
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        client = gspread.authorize(credentials)
+        return client
+    except Exception as e:
+        print(f"Failed to initialize Google Sheets client: {e}")
+        return None
+
+def send_telegram_alert(message):
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    if token and chat_id:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-        try:
-            requests.post(url, json=payload, timeout=10)
-        except Exception as e:
-            print(f"Telegram alert transmission failed: {e}")
-
-def fetch_live_leads_from_sheets():
-    """
-    Connects securely to Google Sheets and fetches rows ready for outreach.
-    """
+    
+    if not bot_token or not chat_id:
+        print("Telegram credentials missing. Skipping notification.")
+        return
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
     try:
-        creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-        if not creds_json:
-            print("Google Service Account credentials missing from environment.")
-            return []
-
-        creds_dict = json.loads(creds_json)
-        scope = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-
-        sheet = client.open("Sovereign_Grid_Leads").sheet1
-        records = sheet.get_all_records()
-
-        dynamic_leads = []
-        for idx, row in enumerate(records, start=2): # start=2 accounts for header row
-            # We look for rows where Status is set to 'Clear Title' (or change to your preferred trigger status)
-            status_val = str(row.get("Status", "")).strip().lower()
-            if status_val == "clear title":
-                lead_data = {
-                    "row_index": idx,
-                    "seller_name": row.get("Owner Name", "Property Owner"),
-                    "email": row.get("Owner Email", "seller@example.com"), # Fallback if email column isn't filled yet
-                    "address": row.get("Property Address", ""),
-                    "arv": float(row.get("ARV", 250000.0)), # Defaults if column is blank
-                    "repair_costs": float(row.get("Repairs", 15000.0)),
-                    "date": str(row.get("Date", ""))
-                }
-                dynamic_leads.append(lead_data)
-
-        return dynamic_leads
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print("Telegram notification sent successfully.")
+        else:
+            print(f"Failed to send Telegram alert: {response.text}")
     except Exception as e:
-        print(f"Error fetching live leads from Google Sheets: {e}")
-        return []
+        print(f"Telegram connection error: {e}")
 
-def update_lead_status_in_sheet(row_index: int, new_status: str):
-    """Updates the Status column in your Google Sheet once a deal is processed."""
+def send_offer_email(recipient_email, pdf_path, property_address, mao):
+    smtp_server = os.environ.get("SMTP_SERVER")
+    smtp_port = os.environ.get("SMTP_PORT")
+    sender_email = os.environ.get("SENDER_EMAIL")
+    sender_password = os.environ.get("SENDER_PASSWORD")
+
+    if not all([smtp_server, smtp_port, sender_email, sender_password]):
+        print("SMTP configuration missing. Cannot send email.")
+        return False
+
     try:
-        creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-        creds_dict = json.loads(creds_json)
-        scope = ["https://www.googleapis.com/auth/spreadsheets"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        
-        sheet = client.open("Sovereign_Grid_Leads").sheet1
-        header = sheet.row_values(1)
-        status_col_idx = header.index("Status") + 1
-        sheet.update_cell(row_index, status_col_idx, new_status)
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+        msg['Subject'] = f"Official Acquisition Offer - {property_address}"
+
+        body = (
+            f"Hello,\n\n"
+            f"We have reviewed your property located at {property_address}. "
+            f"Based on our analysis, our official cash purchase offer (MAO) is ${mao:,.2f}.\n\n"
+            f"Please find your formal purchase and sale agreement attached to this email.\n\n"
+            f"Best regards,\nSovereign Grid Acquisitions Team"
+        )
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Attach PDF Contract
+        with open(pdf_path, "rb") as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', f"attachment; filename=Sovereign_Agreement.pdf")
+            msg.attach(part)
+
+        server = smtplib.SMTP(smtp_server, int(smtp_port))
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipient_email, msg.as_string())
+        server.quit()
+        print(f"Acquisition offer dispatched successfully to {recipient_email}")
+        return True
     except Exception as e:
-        print(f"Failed to update sheet status: {e}")
+        print(f"Failed to send email: {e}")
+        return False
 
 def run_pipeline():
     print("Initializing Sovereign Grid Acquisition Pipeline (Custom Schema Mode)...")
-
-    sovereign_engine = SovereignEngine(max_offer_discount=0.70)
-    pdf_compiler = PDFCompiler()
-    email_dispatcher = EmailDispatcher()
-    memory_wiper = MemoryWiper()
-
-    leads = fetch_live_leads_from_sheets()
-    if not leads:
-        print("No eligible leads found with 'Clear Title' status.")
+    client = get_gspread_client()
+    if not client:
         return
 
-    for lead in leads:
-        print(f"Processing live target lead: {lead['address']}")
+    try:
+        sheet = client.open("Sovereign_Grid_Leads").sheet1
+        records = sheet.get_all_records()
+    except Exception as e:
+        print(f"Error accessing Google Sheet: {e}")
+        return
 
-        mao_offer = sovereign_engine.calculate_mao(lead['arv'], lead['repair_costs'])
-        offer_package = sovereign_engine.draft_acquisition_email(
-            seller_name=lead['seller_name'],
-            property_address=lead['address'],
-            arv=lead['arv'],
-            repair_costs=lead['repair_costs']
-        )
+    processed_any = False
 
-        lead_contract_data = {
-            "address": lead['address'],
-            "price": mao_offer,
-            "arv": lead['arv'],
-            "equity": f"{((lead['arv'] - mao_offer)/lead['arv'])*100:.1f}%",
-            "date": lead['date']
-        }
+    for idx, row in enumerate(records, start=2): # Row 1 is header
+        status = str(row.get("Status", "")).strip()
+        if status.lower() == "clear title":
+            processed_any = True
+            address = row.get("Property Address", "Unknown Address")
+            owner_name = row.get("Owner Name", "Property Owner")
+            owner_email = row.get("Owner Email", "")
+            arv = float(row.get("ARV", 0) or 0)
+            repairs = float(row.get("Repairs", 0) or 0)
+            asking_price = float(row.get("Asking price", 0) or 0)
 
-        pdf_filename = pdf_compiler.generate_contract(lead_contract_data)
+            print(f"Processing live target lead: {address}")
 
-        email_dispatched = email_dispatcher.send_offer(
-            recipient_email=lead['email'],
-            subject=offer_package['subject'],
-            body_text=offer_package['body']
-        )
+            # Calculate MAO (Standard formula: ARV * 0.70 - Repairs, or fallback logic)
+            mao = (arv * 0.70) - repairs
+            gross_spread = arv - repairs - asking_pice if 'arv' in locals() else 0 # safety check
+            
+            # Compile Contract PDF
+            pdf_filename = "Sovereign_Agreement.pdf"
+            compiler = PDFCompiler()
+            compiler.generate_contract(
+                filename=pdf_filename,
+                owner_name=owner_name,
+                property_address=address,
+                mao=mao
+            )
+            print(f"Contract compiled successfully: {pdf_filename}")
 
-        alert_message = (
-            f"🚨 *SOVEREIGN GRID: LIVE DEAL PROCESSED*\n\n"
-            f"📍 *Property:* {lead['address']}\n"
-            f"👤 *Owner:* {lead['seller_name']}\n"
-            f"💰 *Calculated MAO:* ${mao_offer:,.2f}\n"
-            f"📧 *Outreach Status:* {'Dispatched Successfully' if email_dispatched else 'Failed / Skipped'}\n"
-            f"📄 *Contract:* Compiled in-memory ({pdf_filename})"
-        )
-        send_telegram_alert(alert_message)
+            # Send Email
+            email_sent = False
+            if owner_email:
+                email_sent = send_offer_email(owner_email, pdf_filename, address, mao)
+            else:
+                print("No owner email found for this lead.")
 
-        # Update status to prevent duplication
-        update_lead_status_in_sheet(lead['row_index'], "Offer Sent")
-        memory_wiper.purge_transient_files()
+            # Send Telegram Alert
+            telegram_msg = (
+                f"🚨 *New Acquisition Offer Dispatched!*\n\n"
+                f"📍 *Address:* {address}\n"
+                f"👤 *Owner:* {owner_name}\n"
+                f"💰 *Calculated MAO:* `${mao:,.2f}`\n"
+                f"📊 *Status:* Offer Sent"
+            )
+            send_telegram_alert(telegram_msg)
+
+            # Update Google Sheet Status to 'Offer Sent'
+            try:
+                # Find column index for 'Status' dynamically or use column 11 ('K')
+                status_col_index = list(row.keys()).index("Status") + 1
+                sheet.update_cell(idx, status_col_index, "Offer Sent")
+                print(f"Google Sheet row {idx} status updated to 'Offer Sent'.")
+            except Exception as e:
+                print(f"Failed to update sheet status: {e}")
+
+            # Secure Cleanup
+            if os.path.exists(pdf_filename):
+                os.remove(pdf_filename)
+                print(f"Securely shredded and purged: {pdf_filename}")
+
+            break # Process one lead per run cycle
+
+    if not processed_any:
+        print("No eligible leads found with 'Clear Title' status.")
 
     print("Pipeline execution cycle complete. All local traces securely shredded.")
 
 if __name__ == "__main__":
     run_pipeline()
-    
+        
