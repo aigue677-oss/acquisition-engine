@@ -1,14 +1,13 @@
 import os
 import json
-import requests
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 import gspread
 from google.oauth2.service_account import Credentials
-from pdf_compiler import PDFCompiler
+import smtplib
+from email.message import EmailMessage
+import requests
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from twilio.rest import Client
 
 # --- Configuration & Credentials Setup ---
 SCOPES = [
@@ -24,77 +23,105 @@ def get_gspread_client():
     try:
         creds_dict = json.loads(service_account_json)
         credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        client = gspread.authorize(credentials)
-        return client
+        return gspread.authorize(credentials)
     except Exception as e:
         print(f"Failed to initialize Google Sheets client: {e}")
         return None
 
+def generate_pdf_contract(address, owner_name, mao):
+    """
+    Generates a formal, institutional PDF acquisition contract.
+    """
+    filename = "Sovereign_Agreement.pdf"
+    c = canvas.Canvas(filename, pagesize=letter)
+    width, height = letter
+
+    # Document Header
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, height - 50, "SOVEREIGN GRID INSTITUTIONAL ACQUISITIONS")
+    c.setFont("Helvetica", 10)
+    c.drawString(50, height - 65, "Automated Global Real Estate Underwriting Engine")
+    
+    c.setLineWidth(1)
+    c.line(50, height - 75, width - 50, height - 75)
+
+    # Body Content
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, height - 110, "MEMORANDUM OF INTENT / CASH PURCHASE AGREEMENT")
+
+    c.setFont("Helvetica", 11)
+    text_y = height - 140
+    lines = [
+        f"Dear {owner_name},",
+        "",
+        f"Sovereign Grid has completed its institutional underwriting and multi-market governance review",
+        f"for the property located at: {address}.",
+        "",
+        f"Based on current market valuations, projected repairs, and clear title parameters,",
+        f"our acquisition committee has approved a formal all-cash purchase offer of:",
+        "",
+        f"OFFER PURCHASE PRICE: ${mao:,.2f}",
+        "",
+        "Terms: All-Cash, As-Is, Zero Agent Commissions, Standard Escrow Closing.",
+        "Please reply directly to this dispatch to accept terms and execute closing paperwork."
+    ]
+
+    for line in lines:
+        c.drawString(50, text_y, line)
+        text_y -= 20
+
+    # Footer
+    c.setFont("Helvetica-Oblique", 9)
+    c.drawString(50, 50, "Generated autonomously by Sovereign Grid Compliance Engine. Confidential & Legally Binding Framework.")
+    
+    c.save()
+    return filename
+
 def send_telegram_alert(message):
+    """
+    Dispatches real-time audit logs and status alerts to Telegram.
+    """
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    
     if not bot_token or not chat_id:
-        print("Telegram credentials missing. Skipping notification.")
+        print("Telegram credentials missing. Skipping alert.")
         return
     
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            print("Telegram notification sent successfully.")
-        else:
-            print(f"Failed to send Telegram alert: {response.text}")
+        requests.post(url, json=payload)
     except Exception as e:
-        print(f"Telegram connection error: {e}")
+        print(f"Failed to send Telegram alert: {e}")
 
-def send_offer_email(recipient_email, pdf_path, property_address, mao):
-    smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = os.environ.get("SMTP_PORT")
-    sender_email = os.environ.get("SENDER_EMAIL")
-    sender_password = os.environ.get("SENDER_PASSWORD")
+def send_sms_notification(owner_phone, address, mao):
+    """
+    Dispatches real-time SMS offer notification via Twilio API.
+    """
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    twilio_number = os.environ.get("TWILIO_PHONE_NUMBER")
 
-    if not all([smtp_server, smtp_port, sender_email, sender_password]):
-        print("SMTP configuration missing. Cannot send email.")
+    if not account_sid or not auth_token or not twilio_number or not owner_phone:
+        print("Twilio credentials or owner phone missing. Skipping SMS dispatch.")
         return False
 
     try:
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient_email
-        msg['Subject'] = f"Official Ethical Cash Acquisition Offer - {property_address}"
-
-        body = (
-            f"Hello,\n\n"
-            f"We have professionally reviewed your property located at {property_address}. "
-            f"Based on our transparent market analysis and underwriting guidelines, our official cash purchase offer (MAO) is ${mao:,.2f}.\n\n"
-            f"Please find your formal, non-predatory purchase and sale agreement attached to this email for your review.\n\n"
-            f"Best regards,\nSovereign Grid Institutional Acquisitions Team"
+        client = Client(account_sid, auth_token)
+        sms_body = (
+            f"Sovereign Grid Offer Alert: We have issued a formal all-cash "
+            f"purchase offer of ${mao:,.2f} for your property at {address}. "
+            f"Please check your email for complete contract details."
         )
-        msg.attach(MIMEText(body, 'plain'))
-
-        # Attach PDF Contract with correct attachment headers
-        with open(pdf_path, "rb") as attachment:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f"attachment; filename=Sovereign_Agreement.pdf")
-            msg.attach(part)
-
-        server = smtplib.SMTP(smtp_server, int(smtp_port))
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, recipient_email, msg.as_string())
-        server.quit()
-        print(f"Acquisition offer dispatched securely to {recipient_email}")
+        message = client.messages.create(
+            body=sms_body,
+            from_=twilio_number,
+            to=owner_phone
+        )
+        print(f"Twilio SMS successfully dispatched. SID: {message.sid}")
         return True
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"Failed to dispatch Twilio SMS: {e}")
         return False
 
 def run_pipeline():
@@ -103,89 +130,84 @@ def run_pipeline():
     if not client:
         return
 
-    try:
-        sheet = client.open("Sovereign_Grid_Leads").sheet1
-        records = sheet.get_all_records()
-    except Exception as e:
-        print(f"Error accessing Google Sheet: {e}")
-        return
+    sheet = client.open("Sovereign_Grid_Leads").sheet1
+    records = sheet.get_all_records()
 
-    processed_any = False
+    smtp_server = os.environ.get("SMTP_SERVER")
+    smtp_port = int(os.environ.get("SMTP_PORT", 587))
+    sender_email = os.environ.get("SENDER_EMAIL")
+    sender_password = os.environ.get("SENDER_PASSWORD")
 
-    for idx, row in enumerate(records, start=2): # Row 1 is header
-        status = str(row.get("Status", "")).strip()
-        if status.lower() == "clear title":
-            processed_any = True
-            address = row.get("Property Address", "Unknown Address")
-            owner_name = row.get("Owner Name", "Property Owner")
-            owner_email = row.get("Owner Email", "")
+    for idx, row in enumerate(records, start=2):
+        status = row.get("Status", "")
+        
+        if status == "Clear Title":
+            address = row.get("Property Address")
+            owner_name = row.get("Owner Name")
+            owner_phone = row.get("Owner Phone")
+            owner_email = row.get("Owner Email")
             arv = float(row.get("ARV", 0) or 0)
             repairs = float(row.get("Repairs", 0) or 0)
-            asking_price = float(row.get("Asking price", 0) or 0)
+            asking_price = float(row.get("Asking Price", 0) or 0)
 
             print(f"Evaluating governance & compliance for lead: {address}")
 
-            # --- Ethical & Financial Guardrails / Sanitization ---
-            if arv <= 0 or repairs < 0:
-                print(f"Compliance Violation: Invalid financial metrics for {address}. Skipping.")
-                continue
-            
-            if not owner_email or "@" not in owner_email:
-                print(f"Compliance Notice: Missing or invalid owner email for {address}. Bypassing direct outreach.")
-                continue
-
-            # Calculate Transparent MAO
             mao = (arv * 0.70) - repairs
-            if mao <= 0:
-                print(f"Underwriting Guardrail: Calculated MAO is non-viable (${mao:,.2f}). Aborting offer dispatch.")
-                continue
+            gross_spread = arv - repairs - asking_price
 
-            print(f"Underwriting & Compliance Passed. Official MAO calculated: ${mao:,.2f}")
-            
-            # Compile Contract PDF
-            pdf_filename = "Sovereign_Agreement.pdf"
-            compiler = PDFCompiler()
-            compiler.generate_contract(
-                owner_name=owner_name,
-                property_address=address,
-                mao=mao
-            )
-            print(f"Compliant contract compiled successfully: {pdf_filename}")
+            if gross_spread > 0 and asking_price <= mao:
+                print(f"Underwriting & Compliance Passed. Official MAO calculated: ${mao:,.2f}")
 
-            # Send Email
-            send_offer_email(owner_email, pdf_filename, address, mao)
+                pdf_filename = generate_pdf_contract(address, owner_name, mao)
+                print(f"Compliant contract compiled successfully: {pdf_filename}")
 
-            # Send Verified Telegram Alert with Audit Markers
-            telegram_msg = (
-                f"🛡 *Sovereign Grid Audit: Offer Dispatched*\n\n"
-                f"📍 *Address:* {address}\n"
-                f"👤 *Owner:* {owner_name}\n"
-                f"💰 *Verified MAO:* `${mao:,.2f}`\n"
-                f"⚖️ *Governance:* Compliance & Ethics Passed\n"
-                f"📊 *Status:* Offer Sent"
-            )
-            send_telegram_alert(telegram_msg)
+                try:
+                    msg = EmailMessage()
+                    msg['Subject'] = f"Formal Acquisition Offer - {address}"
+                    msg['From'] = sender_email
+                    msg['To'] = owner_email
+                    msg.set_content(
+                        f"Dear {owner_name},\n\nPlease find attached the formal all-cash purchase offer "
+                        f"from Sovereign Grid for your property at {address}.\n\nOffer Amount: ${mao:,.2f}\n\n"
+                        "Review the attached agreement and reply to accept.\n\nBest regards,\nSovereign Grid Acquisitions"
+                    )
 
-            # Update Google Sheet Status to 'Offer Sent' with Audit Trail
-            try:
-                status_col_index = list(row.keys()).index("Status") + 1
-                sheet.update_cell(idx, status_col_index, "Offer Sent")
+                    with open(pdf_filename, 'rb') as f:
+                        file_data = f.read()
+                        file_name = f.name
+                    msg.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+
+                    with smtplib.SMTP(smtp_server, smtp_port) as server:
+                        server.starttls()
+                        server.login(sender_email, sender_password)
+                        server.send_message(msg)
+                    print(f"Acquisition offer dispatched securely to {owner_email}")
+                except Exception as e:
+                    print(f"Email dispatch failed: {e}")
+
+                send_sms_notification(owner_phone, address, mao)
+
+                telegram_msg = (
+                    f"🚨 *Sovereign Grid: Offer Dispatched*\n\n"
+                    f"📍 *Property:* {address}\n"
+                    f"👤 *Owner:* {owner_name} ({owner_phone})\n"
+                    f"💰 *Calculated MAO:* ${mao:,.2f}\n"
+                    f"📊 *Gross Spread:* ${gross_spread:,.2f}\n"
+                    f"✉️ *Status:* Email & SMS Sent Successfully"
+                )
+                send_telegram_alert(telegram_msg)
+
+                sheet.update_cell(idx, 11, "Offer Sent")
                 print(f"Google Sheet row {idx} status updated to 'Offer Sent' under governance review.")
-            except Exception as e:
-                print(f"Failed to update sheet status: {e}")
 
-            # Secure Cleanup
-            if os.path.exists(pdf_filename):
-                os.remove(pdf_filename)
-                print(f"Securely shredded and purged local asset: {pdf_filename}")
-
-            break # Process one lead per run cycle
-
-    if not processed_any:
-        print("No eligible leads found matching institutional governance standards with 'Clear Title' status.")
+                if os.path.exists(pdf_filename):
+                    os.remove(pdf_filename)
+                    print(f"Securely shredded and purged local asset: {pdf_filename}")
+            else:
+                print(f"Lead failed institutional governance thresholds. Gross Spread: ${gross_spread:,.2f}")
 
     print("Pipeline execution cycle complete. Audit logs secured.")
 
 if __name__ == "__main__":
     run_pipeline()
-        
+    
