@@ -2,5 +2,5 @@ Flask
 gspread
 google-auth
 requests
-reportlab
-gunicorn
+playwright
+playwright-stealth
