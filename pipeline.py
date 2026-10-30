@@ -1,15 +1,25 @@
 import json
 import os
+import time
+import random
 import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from valuation_engine import calculate_heuristic_arv, calculate_dynamic_mao
 
+# Optional Playwright imports for stealth scraping
+try:
+    from playwright.sync_api import sync_playwright
+    from playwright_stealth import stealth_sync
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
 # Google Sheets Setup Configuration
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 def get_gspread_client():
-    """Initializes and returns the authenticated gspread client using either an environment JSON string or local file."""
+    """Initializes and returns the authenticated gspread client using environment JSON or local file."""
     creds_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     
     if creds_json:
@@ -50,9 +60,84 @@ def send_telegram_alert(message: str):
     except Exception as e:
         print(f"Error sending Telegram alert: {str(e)}")
 
+def simulate_human_jitter(min_sec=3.5, max_sec=9.2):
+    """Introduces randomized delays to prevent rate-limiting firewalls (HTTP 429)."""
+    sleep_duration = random.uniform(min_sec, max_sec)
+    print(f"[Jitter] Pausing for {sleep_duration:.2f} seconds to mimic human browsing behavior...")
+    time.sleep(sleep_duration)
+
+def fetch_target_property_data(target_url: str):
+    """
+    Scrapes target property records using Playwright with stealth fingerprint masking 
+    and XHR network interception to bypass CAPTCHAs and data-center IP blocks.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        print("Playwright is not installed or available in this environment.")
+        return []
+
+    intercepted_data = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-infobars",
+                "--window-size=1920,1080"
+            ]
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080}
+        )
+        page = context.new_page()
+
+        # Apply Playwright-Stealth fingerprint masking
+        stealth_sync(page)
+
+        def handle_response(response):
+            if "api" in response.url or "json" in response.headers.get("content-type", ""):
+                try:
+                    data = response.json()
+                    intercepted_data.append(data)
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+
+        try:
+            print(f"Navigating securely to target source: {target_url}")
+            page.goto(target_url, timeout=60000)
+            simulate_human_jitter(4.0, 8.5)
+            page.wait_for_load_state("networkidle")
+            browser.close()
+            return intercepted_data
+
+        except Exception as e:
+            print(f"Error during stealth scraping execution: {str(e)}")
+            browser.close()
+            return []
+
+def process_cognitive_payload(raw_data: dict):
+    """
+    Structures scraped information into a flat JSON format 
+    ready for Google Sheets synchronization and Telegram dispatch.
+    """
+    structured_payload = {
+        "target_property": raw_data.get("address", "123 Main Street, Miami FL"),
+        "owner_name": raw_data.get("owner_name", "John Doe (Executor)"),
+        "motivation_score": raw_data.get("motivation_score", 9),
+        "core_pain_point": raw_data.get("core_pain_point", "Probate property, out-of-state heir"),
+        "calculated_mao": raw_data.get("mao", 142000),
+        "exit_strategy_buyer_id": "Hedge_Fund_Alpha"
+    }
+    return structured_payload
+
 def process_inbound_lead(webhook_payload: dict):
     """
-    Core pipeline function that processes inbound lead webhooks,
+    Core pipeline function that processes inbound lead payloads,
     runs internal heuristic underwriting, syncs to Google Sheets, and fires Telegram alerts.
     """
     property_address = webhook_payload.get("address", "Unknown Address")
@@ -72,7 +157,7 @@ def process_inbound_lead(webhook_payload: dict):
         # 2. State Machine Decision Rule
         status = "Offer Accepted" if seller_asking_price <= mao else "Review Required"
 
-        # 3. Package row data
+        # 3. Package row data for Google Sheets
         row_data = [
             property_address,
             seller_name,
@@ -115,4 +200,4 @@ def process_inbound_lead(webhook_payload: dict):
     except Exception as e:
         print(f"Error in heuristic pipeline execution: {str(e)}")
         raise e
-            
+    
