@@ -1,3 +1,4 @@
+import json
 import os
 import gspread
 from google.oauth2.service_account import Credentials
@@ -7,14 +8,20 @@ from valuation_engine import calculate_heuristic_arv, calculate_dynamic_mao
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
 def get_gspread_client():
-    """Initializes and returns the authenticated gspread client using environment credentials."""
-    # If credentials are stored via a service account JSON file or env variable
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
-    if os.path.exists(creds_path):
-        creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+    """Initializes and returns the authenticated gspread client using either an environment JSON string or local file."""
+    creds_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    
+    if creds_json:
+        # Load credentials securely from the Render environment variable string
+        creds_info = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
     else:
-        # Fallback handling if configured via environment JSON string
-        raise FileNotFoundError("Google service account credentials file not found.")
+        # Fallback to local file if testing locally
+        creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
+        if os.path.exists(creds_path):
+            creds = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        else:
+            raise FileNotFoundError("Google service account credentials not found in environment variables or file.")
     
     client = gspread.authorize(creds)
     return client
@@ -71,4 +78,4 @@ def process_inbound_lead(webhook_payload: dict):
     except Exception as e:
         print(f"Error in heuristic pipeline execution: {str(e)}")
         raise e
-    
+        
