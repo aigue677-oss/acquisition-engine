@@ -48,30 +48,22 @@ def trigger_live_scrape():
     and automatically feeds qualified leads into the underwriting pipeline.
     """
     try:
-        # Get target URL from query parameters or JSON body (defaults to a sample target if none provided)
-        target_url = request.args.get("url") or request.json.get("url") if request.is_json else None
+        target_url = request.args.get("url") or (request.json.get("url") if request.is_json else None)
         
         if not target_url:
-            # Fallback default municipal target source or placeholder for your actual county site
             target_url = "https://example.com/municipal-records-sample"
 
         print(f"Initiating live stealth scrape session on target: {target_url}")
         
-        # Execute stealth scraping with fingerprint masking & network interception
         raw_intercepted_data = fetch_target_property_data(target_url)
-        
         processed_leads = []
         
-        # If data was successfully pulled, pass through cognitive routing and into the pipeline
         if raw_intercepted_data:
             for raw_item in raw_intercepted_data:
                 structured_lead = process_cognitive_payload(raw_item)
-                # Feed automatically into your live underwriting and Google Sheets sync
                 row_result = process_inbound_lead(structured_lead)
                 processed_leads.append(row_result)
         else:
-            # If running a live test where the target page structure varies, 
-            # we ensure the system can also accept a standard simulated live payload feed.
             print("No raw data intercepted from target URL, or target requires specific element bindings. Running live engine check...")
 
         return jsonify({
