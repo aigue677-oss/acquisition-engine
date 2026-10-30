@@ -120,6 +120,43 @@ def fetch_target_property_data(target_url: str):
             browser.close()
             return []
 
+def match_institutional_buyer(purchase_price: float, bedrooms: int = 3):
+    """
+    Scans the Institutional_Buyers tab in Google Sheets to find 
+    the optimal cash buyer matching the property criteria.
+    """
+    try:
+        client = get_gspread_client()
+        sheet_key = os.getenv("GOOGLE_SHEET_KEY")
+        
+        if not sheet_key:
+            return "Hedge_Fund_Alpha (Default Match)"
+
+        spreadsheet = client.open_by_key(sheet_key)
+        
+        try:
+            buyer_sheet = spreadsheet.worksheet("Institutional_Buyers")
+            buyers = buyer_sheet.get_all_records()
+        except Exception:
+            print("Institutional_Buyers tab not found. Using default buyer routing.")
+            return "Hedge_Fund_Alpha (Default Match)"
+
+        best_match = "Open Market / Standard Exit"
+        
+        for buyer in buyers:
+            max_price = float(buyer.get("Max_Purchase_Price", 999999))
+            min_beds = int(buyer.get("Min_Bedrooms", 2))
+            
+            if purchase_price <= max_price and bedrooms >= min_beds:
+                best_match = buyer.get("Buyer_ID", "Hedge_Fund_Alpha")
+                break 
+
+        return best_match
+
+    except Exception as e:
+        print(f"Error matching institutional buyer: {str(e)}")
+        return "Hedge_Fund_Alpha (Default Match)"
+
 def process_cognitive_payload(raw_data: dict):
     """
     Structures scraped information into a flat JSON format 
@@ -140,7 +177,7 @@ def process_cognitive_payload(raw_data: dict):
 def process_inbound_lead(webhook_payload: dict):
     """
     Core pipeline function that processes inbound lead payloads,
-    runs internal heuristic underwriting, syncs to Google Sheets, and fires Telegram alerts.
+    runs internal heuristic underwriting, matches buyers, syncs to Google Sheets, and fires Telegram alerts.
     """
     property_address = webhook_payload.get("address", "Unknown Address")
     seller_name = webhook_payload.get("seller_name", "Unknown Seller")
@@ -159,7 +196,10 @@ def process_inbound_lead(webhook_payload: dict):
         # 2. State Machine Decision Rule
         status = "Offer Accepted" if seller_asking_price <= mao else "Review Required"
 
-        # 3. Package row data for Google Sheets
+        # 3. Match Institutional Buyer
+        matched_buyer = match_institutional_buyer(seller_asking_price)
+
+        # 4. Package row data for Google Sheets (9 columns)
         row_data = [
             property_address,
             seller_name,
@@ -168,10 +208,11 @@ def process_inbound_lead(webhook_payload: dict):
             estimated_repairs,
             mao,
             gross_spread,
-            status
+            status,
+            matched_buyer
         ]
         
-        # 4. Push data to Google Sheets
+        # 5. Push data to Google Sheets
         client = get_gspread_client()
         sheet_key = os.getenv("GOOGLE_SHEET_KEY")
         
@@ -182,9 +223,9 @@ def process_inbound_lead(webhook_payload: dict):
         else:
             print("Warning: GOOGLE_SHEET_KEY environment variable not set. Skipping sheet sync.")
 
-        # 5. Format and send Telegram Alert
+        # 6. Format and send Telegram Alert
         alert_message = (
-            f"🚨 *New Real Estate Lead Processed*\n\n"
+            f"🚨 *New Real Estate Lead & Buyer Match*\n\n"
             f"📍 *Address:* {property_address}\n"
             f"👤 *Seller:* {seller_name}\n"
             f"💰 *Asking Price:* ${seller_asking_price:,.2f}\n"
@@ -192,13 +233,15 @@ def process_inbound_lead(webhook_payload: dict):
             f"🛠 *Est. Repairs:* ${estimated_repairs:,.2f}\n"
             f"📊 *Calculated MAO:* ${mao:,.2f}\n"
             f"📈 *Gross Spread:* ${gross_spread:,.2f}\n"
-            f"⚡ *Status:* *{status}*"
+            f"⚡ *Status:* *{status}*\n"
+            f"🏛 *Matched Buyer:* `{matched_buyer}`"
         )
         send_telegram_alert(alert_message)
 
-        print(f"Underwriting Complete & Notified. Status: {status}")
+        print(f"Underwriting & Buyer Matching Complete. Status: {status} | Buyer: {matched_buyer}")
         return row_data
 
     except Exception as e:
         print(f"Error in heuristic pipeline execution: {str(e)}")
         raise e
+    
