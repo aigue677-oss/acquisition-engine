@@ -1,83 +1,31 @@
-import os
 from flask import Flask, request, jsonify
-from pipeline import process_inbound_lead, fetch_target_property_data, process_cognitive_payload
+from pipeline import process_inbound_lead
 
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
-def health_check():
-    """Health check endpoint to verify the Render deployment is live."""
-    return jsonify({
-        "status": "success",
-        "message": "Sovereign Real Estate Acquisition Engine is live and operating at 100% capacity."
-    }), 200
+def home():
+    return jsonify({"status": "success", "message": "Sovereign Acquisition Engine is online."}), 200
 
 @app.route("/webhook", methods=["POST"])
-def webhook_receiver():
-    """
-    Main production webhook receiver. 
-    Accepts property payloads, runs heuristic underwriting, 
-    updates Google Sheets, and dispatches Telegram alerts.
-    """
+def webhook():
+    """Receives inbound JSON payloads, processes underwriting, and triggers automation."""
     try:
-        payload = request.get_json()
-        
-        if not payload:
-            return jsonify({"status": "error", "message": "No JSON payload provided."}), 400
-
-        print(f"Inbound webhook received: {payload}")
-        
-        # Process lead through core pipeline
-        result_row = process_inbound_lead(payload)
-        
+        data = request.get_json(force=True)
+        if not data:
+            return jsonify({"status": "error", "message": "No JSON payload provided"}), 400
+            
+        result = process_inbound_lead(data)
         return jsonify({
-            "status": "success",
-            "message": "Lead processed and underwritten via internal heuristics.",
-            "data": result_row
+            "status": "success", 
+            "message": "Lead processed successfully and logged to sheet/Telegram.",
+            "data": result
         }), 200
-
+        
     except Exception as e:
-        print(f"Webhook processing error: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/trigger-scrape", methods=["POST", "GET"])
-def trigger_live_scrape():
-    """
-    Live scraping trigger endpoint. 
-    Executes the stealth scraper, processes the harvested data through cognitive routing, 
-    and automatically feeds qualified leads into the underwriting pipeline.
-    """
-    try:
-        target_url = request.args.get("url") or (request.json.get("url") if request.is_json else None)
-        
-        if not target_url:
-            target_url = "https://example.com/municipal-records-sample"
-
-        print(f"Initiating live stealth scrape session on target: {target_url}")
-        
-        raw_intercepted_data = fetch_target_property_data(target_url)
-        processed_leads = []
-        
-        if raw_intercepted_data:
-            for raw_item in raw_intercepted_data:
-                structured_lead = process_cognitive_payload(raw_item)
-                row_result = process_inbound_lead(structured_lead)
-                processed_leads.append(row_result)
-        else:
-            print("No raw data intercepted from target URL, or target requires specific element bindings. Running live engine check...")
-
-        return jsonify({
-            "status": "success",
-            "message": "Live stealth scraping session executed successfully.",
-            "leads_processed_count": len(processed_leads),
-            "leads": processed_leads
-        }), 200
-
-    except Exception as e:
-        print(f"Error during live scraping trigger: {str(e)}")
+        print(f"Webhook execution error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
     
