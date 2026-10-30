@@ -126,11 +126,13 @@ def process_cognitive_payload(raw_data: dict):
     ready for Google Sheets synchronization and Telegram dispatch.
     """
     structured_payload = {
-        "target_property": raw_data.get("address", "123 Main Street, Miami FL"),
-        "owner_name": raw_data.get("owner_name", "John Doe (Executor)"),
+        "address": raw_data.get("address", "123 Main Street, Miami FL"),
+        "seller_name": raw_data.get("owner_name", "John Doe (Executor)"),
+        "asking_price": raw_data.get("asking_price", 120000.0),
+        "repairs": raw_data.get("repairs", 15000.0),
+        "square_footage": raw_data.get("square_footage", 1500.0),
         "motivation_score": raw_data.get("motivation_score", 9),
         "core_pain_point": raw_data.get("core_pain_point", "Probate property, out-of-state heir"),
-        "calculated_mao": raw_data.get("mao", 142000),
         "exit_strategy_buyer_id": "Hedge_Fund_Alpha"
     }
     return structured_payload
@@ -200,4 +202,3 @@ def process_inbound_lead(webhook_payload: dict):
     except Exception as e:
         print(f"Error in heuristic pipeline execution: {str(e)}")
         raise e
-    
