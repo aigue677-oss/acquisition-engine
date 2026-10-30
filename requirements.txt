@@ -1,6 +1,7 @@
-Flask
-gspread
-google-auth
-requests
-playwright
-playwright-stealth
+Flask==3.0.2
+gunicorn==21.2.0
+requests==2.31.0
+gspread==6.0.0
+google-auth==2.28.1
+playwright==1.42.0
+playwright-stealth==1.0.6
