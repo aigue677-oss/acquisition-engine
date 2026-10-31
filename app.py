@@ -69,7 +69,7 @@ def webhook_receiver():
         is_approved = asking_price <= mao
         status = "Approved - Underwriting Passed" if is_approved else "Review - High Asking Price"
 
-        # --- PHASE B INTEGRATION: AUTOMATED CONTRACT GENERATION ---
+        # --- CONTRACT GENERATION INTEGRATION ---
         contract_status_msg = "Not Generated (Did not pass underwriting)"
         if is_approved:
             contract_payload = {
@@ -111,4 +111,3 @@ def webhook_receiver():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
-    
