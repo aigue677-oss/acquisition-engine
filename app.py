@@ -34,7 +34,6 @@ def health_check():
 def trigger_scraper():
     """Secure endpoint to trigger the autonomous Playwright-stealth scraper in the background."""
     try:
-        # Launch scraper.py as a detached background subprocess to avoid blocking the web server
         subprocess.Popen(["python", "scraper.py"])
         return jsonify({
             "status": "success",
@@ -110,4 +109,6 @@ def webhook_receiver():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+    
