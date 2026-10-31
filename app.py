@@ -57,7 +57,8 @@ def webhook():
     Telegram notification dispatch, and automated Google Sheets CRM logging.
     """
     try:
-        payload = request.get_json(silent=True)
+        # force=True ensures JSON is parsed even if the Content-Type header is missing or altered
+        payload = request.get_json(force=True, silent=True)
         if not payload:
             logger.warning("Received invalid or empty JSON payload on /webhook")
             return jsonify({"error": "Invalid JSON payload"}), 400
@@ -152,4 +153,3 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-                    
