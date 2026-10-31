@@ -1,5 +1,8 @@
 import os
 import logging
+import json
+import urllib.request
+import urllib.parse
 from flask import Flask, request, jsonify
 
 # Initialize Flask application
@@ -9,22 +12,21 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables check (ensures keys are present on boot)
+# Environment variables check
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-GOOGLE_SHEET_KEY = os.environ.get("GOOGLE_SHEET_KEY")
 
 @app.route("/", methods=["GET"])
-def health_check():
+def index():
     """Health check endpoint to keep the Render service alive and responsive."""
     return jsonify({
-        "status": "online",
         "service": "Acquisition Engine Web Service",
+        "status": "online",
         "version": "3.11.9"
     }), 200
 
 @app.route("/webhook", methods=["POST"])
-def webhook_handler():
+def webhook():
     """
     Inbound webhook endpoint that handles lead ingestion, heuristic underwriting,
     and Telegram notification dispatch.
@@ -44,8 +46,8 @@ def webhook_handler():
 
         logger.info(f"Processing incoming lead for property: {address}")
 
-        # Core Heuristic Calculation Placeholder (Integrate valuation_engine logic here)
-        estimated_arv = square_footage * 180.0  # Example heuristic baseline
+        # Core Heuristic Calculation
+        estimated_arv = square_footage * 180.0
         allowable_offer = (estimated_arv * 0.70) - repairs
         gross_spread = estimated_arv - asking_price - repairs
 
@@ -62,10 +64,6 @@ def webhook_handler():
 
         # Dispatch Telegram Notification
         if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-            import urllib.request
-            import urllib.parse
-            import json
-
             telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
             data = urllib.parse.urlencode({
                 "chat_id": TELEGRAM_CHAT_ID,
@@ -99,4 +97,4 @@ def webhook_handler():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-    
+        
