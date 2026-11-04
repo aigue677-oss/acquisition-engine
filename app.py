@@ -105,47 +105,57 @@ def webhook():
         if not payload:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
-        # CRITICAL DIAGNOSTIC: Log the raw incoming payload to Render console
         logger.info(f"RAW TALLY PAYLOAD RECEIVED: {json.dumps(payload)}")
 
-        # Parse Tally webhook payload structure robustly
-        form_data = {}
+        # Extract fields array from Tally payload
         payload_data = payload.get("data", payload)
         fields = payload_data.get("fields", [])
         
+        field_values = []
         if isinstance(fields, list):
             for field in fields:
+                # Grab value and also check label/key just in case
+                val = field.get("value")
                 label = str(field.get("label", field.get("key", ""))).strip().lower()
-                value = field.get("value")
-                if label and value is not None:
-                    form_data[label] = value
-        
-        if isinstance(payload, dict):
-            for k, v in payload.items():
-                form_data[k.strip().lower()] = v
+                field_values.append({"label": label, "value": val})
 
-        # Helper to safely fetch mapped values across various possible Tally label formats
-        def get_field(*possible_keys):
-            for key in possible_keys:
-                clean_key = key.lower()
-                for f_key, f_val in form_data.items():
-                    if clean_key in f_key or f_key in clean_key:
-                        if f_val not in [None, ""]:
-                            return f_val
+        # Helper to get field by index or fallback label search
+        def get_by_index_or_label(index, *possible_keys):
+            # 1. Try sequential index first based on form order
+            if len(field_values) > index and field_values[index]["value"] is not None:
+                return field_values[index]["value"]
+            
+            # 2. Fallback to label search
+            for item in field_values:
+                for key in possible_keys:
+                    if key.lower() in item["label"]:
+                        if item["value"] not in [None, ""]:
+                            return item["value"]
             return None
 
-        # Extract & map fields corresponding to your Tally form UI
-        property_address = str(get_field("property address", "address") or "Unknown Address")
-        city = str(get_field("city") or "")
-        region_state = str(get_field("state / region", "state", "region") or "")
-        country = str(get_field("country") or "USA")
-        zip_code = str(get_field("zip code", "zip") or "")
+        # Map strictly to your form field order:
+        # 0: Property Address
+        # 1: City
+        # 2: State / Region
+        # 3: Zip Code
+        # 4: Owner Full Name
+        # 5: Phone Number
+        # 6: Email Address
+        # 7: Asking Price
+        # 8: Estimated Repairs
+        # 9: Square Footage
+        # 10: Bedrooms
         
-        owner_name = str(get_field("owner full name", "full name", "name") or "Unknown Seller")
-        owner_phone = str(get_field("phone number", "phone") or "")
-        owner_email = str(get_field("email address", "email") or "")
+        property_address = str(get_by_index_or_label(0, "address") or "Unknown Address")
+        city = str(get_by_index_or_label(1, "city") or "")
+        region_state = str(get_by_index_or_label(2, "state", "region") or "")
+        zip_code = str(get_by_index_or_label(3, "zip") or "")
+        country = "USA"
         
-        # Numerical fields with robust parsing
+        owner_name = str(get_by_index_or_label(4, "name") or "Unknown Seller")
+        owner_phone = str(get_by_index_or_label(5, "phone") or "")
+        owner_email = str(get_by_index_or_label(6, "email") or "")
+        
         def parse_float(val, default=0.0):
             if val is None:
                 return default
@@ -164,11 +174,10 @@ def webhook():
             except ValueError:
                 return default
 
-        asking_price = parse_float(get_field("asking price", "price"), 0.0)
-        repairs = parse_float(get_field("estimated repairs", "repairs"), 0.0)
-        square_footage = parse_float(get_field("square footage", "sqft"), 1500.0)
-        bedrooms = parse_int(get_field("bedrooms", "beds"), 3)
-        property_type = str(get_field("property type") or "Single Family")
+        asking_price = parse_float(get_by_index_or_label(7, "asking price", "price"), 0.0)
+        repairs = parse_float(get_by_index_or_label(8, "repairs"), 0.0)
+        square_footage = parse_float(get_by_index_or_label(9, "square footage", "sqft"), 1500.0)
+        bedrooms = parse_int(get_by_index_or_label(10, "bedrooms", "beds"), 3)
 
         matched_buyers = []
         sheet_logged = False
@@ -282,4 +291,4 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-        
+    
