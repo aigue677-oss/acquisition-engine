@@ -105,28 +105,30 @@ def webhook():
         if not payload:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
-        # Parse Tally webhook payload structure (extracting from data.fields)
+        # Parse Tally webhook payload structure robustly
         form_data = {}
-        data_obj = payload.get("data", {})
-        fields = data_obj.get("fields", [])
+        payload_data = payload.get("data", payload)
+        fields = payload_data.get("fields", [])
         
-        # If fields is a list (standard Tally webhook format), map by label
         if isinstance(fields, list):
             for field in fields:
-                label = field.get("label", "").strip().lower()
+                label = str(field.get("label", field.get("key", ""))).strip().lower()
                 value = field.get("value")
                 if label and value is not None:
                     form_data[label] = value
-        else:
-            # Fallback if payload is already flattened or sent differently
-            form_data = {k.lower(): v for k, v in payload.items()}
+        
+        if isinstance(payload, dict):
+            for k, v in payload.items():
+                form_data[k.strip().lower()] = v
 
-        # Helper to safely fetch mapped values based on Tally field labels from your form UI
+        # Helper to safely fetch mapped values across various possible Tally label formats
         def get_field(*possible_keys):
             for key in possible_keys:
-                val = form_data.get(key.lower())
-                if val not in [None, ""]:
-                    return val
+                clean_key = key.lower()
+                for f_key, f_val in form_data.items():
+                    if clean_key in f_key or f_key in clean_key:
+                        if f_val not in [None, ""]:
+                            return f_val
             return None
 
         # Extract & map fields corresponding to your Tally form UI
@@ -145,7 +147,6 @@ def webhook():
             if val is None:
                 return default
             try:
-                # Remove dollar signs, commas, or spaces if present
                 clean_val = str(val).replace("$", "").replace(",", "").strip()
                 return float(clean_val)
             except ValueError:
@@ -278,4 +279,4 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-            
+    
