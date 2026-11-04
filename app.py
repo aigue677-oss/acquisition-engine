@@ -105,21 +105,66 @@ def webhook():
         if not payload:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
-        # Extract base lead details
-        property_address = payload.get("property_address", "Unknown Address")
-        city = payload.get("city", "")
-        region_state = payload.get("region_state", "")
-        country = payload.get("country", "USA")
-        owner_name = payload.get("owner_name", "Unknown Seller")
-        owner_phone = payload.get("owner_phone", "")
-        owner_email = payload.get("owner_email", "")
+        # Parse Tally webhook payload structure (extracting from data.fields)
+        form_data = {}
+        data_obj = payload.get("data", {})
+        fields = data_obj.get("fields", [])
         
-        asking_price = float(payload.get("asking_price", 0.0))
-        repairs = float(payload.get("repairs", 0.0))
-        square_footage = float(payload.get("square_footage", 1500.0))
-        bedrooms = int(payload.get("bedrooms", 3))
-        property_type = payload.get("property_type", "Single Family")
-        zip_code = str(payload.get("zip_code", ""))
+        # If fields is a list (standard Tally webhook format), map by label
+        if isinstance(fields, list):
+            for field in fields:
+                label = field.get("label", "").strip().lower()
+                value = field.get("value")
+                if label and value is not None:
+                    form_data[label] = value
+        else:
+            # Fallback if payload is already flattened or sent differently
+            form_data = {k.lower(): v for k, v in payload.items()}
+
+        # Helper to safely fetch mapped values based on Tally field labels from your form UI
+        def get_field(*possible_keys):
+            for key in possible_keys:
+                val = form_data.get(key.lower())
+                if val not in [None, ""]:
+                    return val
+            return None
+
+        # Extract & map fields corresponding to your Tally form UI
+        property_address = str(get_field("property address", "address") or "Unknown Address")
+        city = str(get_field("city") or "")
+        region_state = str(get_field("state / region", "state", "region") or "")
+        country = str(get_field("country") or "USA")
+        zip_code = str(get_field("zip code", "zip") or "")
+        
+        owner_name = str(get_field("owner full name", "full name", "name") or "Unknown Seller")
+        owner_phone = str(get_field("phone number", "phone") or "")
+        owner_email = str(get_field("email address", "email") or "")
+        
+        # Numerical fields with robust parsing
+        def parse_float(val, default=0.0):
+            if val is None:
+                return default
+            try:
+                # Remove dollar signs, commas, or spaces if present
+                clean_val = str(val).replace("$", "").replace(",", "").strip()
+                return float(clean_val)
+            except ValueError:
+                return default
+
+        def parse_int(val, default=3):
+            if val is None:
+                return default
+            try:
+                clean_val = str(val).replace(",", "").strip()
+                return int(float(clean_val))
+            except ValueError:
+                return default
+
+        asking_price = parse_float(get_field("asking price", "price"), 0.0)
+        repairs = parse_float(get_field("estimated repairs", "repairs"), 0.0)
+        square_footage = parse_float(get_field("square footage", "sqft"), 1500.0)
+        bedrooms = parse_int(get_field("bedrooms", "beds"), 3)
+        property_type = str(get_field("property type") or "Single Family")
 
         matched_buyers = []
         sheet_logged = False
@@ -194,8 +239,8 @@ def webhook():
             buyer_text = "\n".join([f"• {b['buyer_id']} ({b['email']})" for b in matched_buyers]) or "None"
             alert_msg = (
                 f"🚨 **Enterprise Lead Processed**\n\n"
-                f"📍 **Address:** {property_address}, {city}, {region_state}\n"
-                f"👤 **Owner:** {owner_name} ({owner_phone})\n"
+                f"📍 **Address:** {property_address}, {city}, {region_state} {zip_code}\n"
+                f"👤 **Owner:** {owner_name} ({owner_phone} | {owner_email})\n"
                 f"📊 **Used PPSF:** ${ppsf:.2f}/sqft | **ARV:** ${arv:,.2f}\n"
                 f"💰 **Asking:** ${asking_price:,.2f} | **MAO:** ${mao:,.2f}\n"
                 f"📈 **Spread:** ${gross_spread:,.2f}\n\n"
@@ -233,3 +278,4 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+            
