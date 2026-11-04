@@ -105,6 +105,9 @@ def webhook():
         if not payload:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
+        # CRITICAL DIAGNOSTIC: Log the raw incoming payload to Render console
+        logger.info(f"RAW TALLY PAYLOAD RECEIVED: {json.dumps(payload)}")
+
         # Parse Tally webhook payload structure robustly
         form_data = {}
         payload_data = payload.get("data", payload)
@@ -279,4 +282,4 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-    
+        
